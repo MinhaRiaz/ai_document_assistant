@@ -357,7 +357,6 @@ def load_from_google_drive(url):
             url,
             output=str(output_path),
             quiet=True,
-            fuzzy=True,
         )
 
         files = [Path(downloaded)] if downloaded else []
