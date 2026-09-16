@@ -330,43 +330,107 @@ def documents_signature(documents):
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 
+def extract_drive_id(url):
+    """Extract Google Drive file or folder ID from the link."""
+
+    patterns = [
+        r"/file/d/([a-zA-Z0-9_-]+)",
+        r"/folders/([a-zA-Z0-9_-]+)",
+        r"[?&]id=([a-zA-Z0-9_-]+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+
+        if match:
+            return match.group(1)
+
+    # Also allow user to paste only the Drive ID
+    if re.fullmatch(r"[a-zA-Z0-9_-]{10,}", url.strip()):
+        return url.strip()
+
+    return None
+
+
 def load_from_google_drive(url):
     """
-    Load a public/shared Google Drive file or folder.
-    gdown handles Google Drive download links.
+    Load supported public Google Drive files or folders.
+    Supported: PDF, DOCX, TXT, MD.
     """
-    temp_dir = tempfile.mkdtemp(prefix="drive_docs_")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="drive_docs_"))
     documents = []
 
+    # -----------------------------
+    # Google Drive Folder
+    # -----------------------------
     if "/folders/" in url:
+
+        folder_id = extract_drive_id(url)
+
+        if not folder_id:
+            raise ValueError(
+                "Could not find the Google Drive folder ID."
+            )
+
         downloaded_dir = gdown.download_folder(
-            url,
-            output=temp_dir,
+            id=folder_id,
+            output=str(temp_dir),
             quiet=True,
             use_cookies=False,
         )
 
         if downloaded_dir:
             root = Path(downloaded_dir)
-            files = [p for p in root.rglob("*") if p.is_file()]
+
+            files = [
+                p
+                for p in root.rglob("*")
+                if p.is_file()
+                and p.suffix.lower() in SUPPORTED_EXTENSIONS
+            ]
         else:
             files = []
+
+    # -----------------------------
+    # Google Drive File
+    # -----------------------------
     else:
-        output_path = Path(temp_dir) / "drive_file"
+
+        file_id = extract_drive_id(url)
+
+        if not file_id:
+            raise ValueError(
+                "Could not find a Google Drive file ID."
+            )
+
         downloaded = gdown.download(
-            url,
-            output=str(output_path),
+            id=file_id,
+            output=None,
             quiet=True,
         )
 
-        files = [Path(downloaded)] if downloaded else []
+        if downloaded:
+            files = [Path(downloaded)]
+        else:
+            files = []
 
+    # -----------------------------
+    # Read downloaded files
+    # -----------------------------
     for path in files:
+
         if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             continue
 
         try:
-            documents.append((path.name, path.read_bytes()))
+            documents.append(
+                (
+                    path.name,
+                    path.read_bytes()
+                )
+            )
+
         except OSError:
             continue
 
