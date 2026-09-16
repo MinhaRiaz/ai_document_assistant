@@ -5,4 +5,4 @@ sentence-transformers
 faiss-cpu
 numpy
 groq
-gdown
+gdown>=6.2.0,<7.0.0
