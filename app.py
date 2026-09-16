@@ -331,12 +331,22 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 
 def extract_drive_id(url):
-    """Extract Google Drive file or folder ID from the link."""
+    """Extract Google Drive file or folder ID from common Drive links."""
+
+    url = url.strip()
 
     patterns = [
+        # https://drive.google.com/file/d/FILE_ID/view
         r"/file/d/([a-zA-Z0-9_-]+)",
+
+        # https://drive.google.com/drive/u/0/folders/FOLDER_ID
         r"/folders/([a-zA-Z0-9_-]+)",
+
+        # https://drive.google.com/open?id=FILE_ID
         r"[?&]id=([a-zA-Z0-9_-]+)",
+
+        # https://drive.google.com/uc?id=FILE_ID
+        r"uc\?id=([a-zA-Z0-9_-]+)",
     ]
 
     for pattern in patterns:
@@ -345,21 +355,26 @@ def extract_drive_id(url):
         if match:
             return match.group(1)
 
-    # Also allow user to paste only the Drive ID
-    if re.fullmatch(r"[a-zA-Z0-9_-]{10,}", url.strip()):
-        return url.strip()
+    # If the user pasted only the file/folder ID
+    if re.fullmatch(r"[a-zA-Z0-9_-]{10,}", url):
+        return url
 
     return None
 
 
 def load_from_google_drive(url):
     """
-    Load supported public Google Drive files or folders.
-    Supported: PDF, DOCX, TXT, MD.
+    Load supported files from a public/shared Google Drive
+    file or folder.
+
+    Supported:
+    PDF, DOCX, TXT, MD
     """
 
     temp_dir = Path(tempfile.mkdtemp(prefix="drive_docs_"))
     documents = []
+
+    url = url.strip()
 
     # -----------------------------
     # Google Drive Folder
@@ -380,17 +395,20 @@ def load_from_google_drive(url):
             use_cookies=False,
         )
 
-        if downloaded_dir:
-            root = Path(downloaded_dir)
+        if not downloaded_dir:
+            raise ValueError(
+                "Google Drive folder could not be downloaded. "
+                "Make sure the folder is publicly accessible."
+            )
 
-            files = [
-                p
-                for p in root.rglob("*")
-                if p.is_file()
-                and p.suffix.lower() in SUPPORTED_EXTENSIONS
-            ]
-        else:
-            files = []
+        root = Path(downloaded_dir)
+
+        files = [
+            p
+            for p in root.rglob("*")
+            if p.is_file()
+            and p.suffix.lower() in SUPPORTED_EXTENSIONS
+        ]
 
     # -----------------------------
     # Google Drive File
@@ -401,33 +419,50 @@ def load_from_google_drive(url):
 
         if not file_id:
             raise ValueError(
-                "Could not find a Google Drive file ID."
+                "Could not find a Google Drive file ID. "
+                "Please paste a normal Google Drive file link."
             )
 
+        # Let gdown detect the original filename and extension.
         downloaded = gdown.download(
             id=file_id,
             output=None,
-            quiet=True,
+            quiet=False,
         )
 
-        if downloaded:
-            files = [Path(downloaded)]
-        else:
-            files = []
+        if not downloaded:
+            raise ValueError(
+                "Google Drive could not provide the file. "
+                "Make sure the file is shared as "
+                "'Anyone with the link → Viewer'."
+            )
+
+        downloaded_path = Path(downloaded)
+
+        # Move the downloaded file into our temporary directory.
+        final_path = temp_dir / downloaded_path.name
+
+        downloaded_path.replace(final_path)
+
+        files = [final_path]
 
     # -----------------------------
-    # Read downloaded files
+    # Read supported files
     # -----------------------------
     for path in files:
 
-        if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        extension = path.suffix.lower()
+
+        if extension not in SUPPORTED_EXTENSIONS:
             continue
 
         try:
+            file_bytes = path.read_bytes()
+
             documents.append(
                 (
                     path.name,
-                    path.read_bytes()
+                    file_bytes
                 )
             )
 
@@ -464,9 +499,10 @@ with st.sidebar:
     )
 
     st.caption(
-        "Drive links must be accessible to the account/session used for downloading. "
-        "Supported: PDF, DOCX, TXT, MD."
-    )
+    "Drive files must be shared as "
+    "'Anyone with the link → Viewer'. "
+    "Supported: PDF, DOCX, TXT, MD."
+)
 
 
 # -----------------------------
@@ -505,7 +541,12 @@ if load_drive:
                     st.session_state.drive_documents = drive_documents
                     st.success(f"Loaded {len(drive_documents)} supported file(s) from Drive.")
             except Exception as error:
-                st.error(f"Could not load the Drive link: {error}")
+    st.error(f"Could not load the Drive link: {error}")
+
+    st.info(
+        "If this is a Google Drive file, check: "
+        "Share → General access → Anyone with the link → Viewer."
+    )
 
 
 if "drive_documents" not in st.session_state:
