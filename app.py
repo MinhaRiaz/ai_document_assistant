@@ -541,7 +541,7 @@ if load_drive:
                     st.session_state.drive_documents = drive_documents
                     st.success(f"Loaded {len(drive_documents)} supported file(s) from Drive.")
             except Exception as error:
-    st.error(f"Could not load the Drive link: {error}")
+               st.error(f"Could not load the Drive link: {error}")
 
     st.info(
         "If this is a Google Drive file, check: "
