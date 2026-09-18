@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import gdown
 import numpy as np
 import streamlit as st
 from docx import Document
+from pptx import Presentation
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from groq import Groq
@@ -107,6 +109,32 @@ def extract_docx(file_bytes, filename):
     ]
 
 
+def extract_pptx(file_bytes, filename):
+    """Extract PPTX slides, using slide numbers as page numbers."""
+    prs = Presentation(io.BytesIO(file_bytes))
+    records = []
+
+    for slide_number, slide in enumerate(prs.slides, start=1):
+        text_runs = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for paragraph in shape.text_frame.paragraphs:
+                    text_runs.append(paragraph.text)
+
+        text = "\n".join(t for t in text_runs if t.strip())
+
+        if text.strip():
+            records.append(
+                {
+                    "text": text.strip(),
+                    "filename": filename,
+                    "page": slide_number,
+                }
+            )
+
+    return records
+
+
 def extract_txt(file_bytes, filename):
     """Extract plain text."""
     text = file_bytes.decode("utf-8", errors="ignore")
@@ -147,6 +175,8 @@ def extract_document(file_bytes, filename):
         return extract_pdf(file_bytes, filename)
     if extension == ".docx":
         return extract_docx(file_bytes, filename)
+    if extension == ".pptx":
+        return extract_pptx(file_bytes, filename)
     if extension == ".txt":
         return extract_txt(file_bytes, filename)
     if extension == ".md":
@@ -327,7 +357,7 @@ def documents_signature(documents):
 # -----------------------------
 # Google Drive
 # -----------------------------
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".txt", ".md"}
 
 
 def extract_drive_id(url):
@@ -354,9 +384,6 @@ def extract_drive_id(url):
         return url
 
     return None
-
-
-import shutil  # Add this import at the top of your script
 
 
 def load_from_google_drive(url):
@@ -478,10 +505,10 @@ with st.sidebar:
     )
 
     st.caption(
-    "Drive files must be shared as "
-    "'Anyone with the link → Viewer'. "
-    "Supported: PDF, DOCX, TXT, MD."
-)
+        "Drive files must be shared as "
+        "'Anyone with the link → Viewer'. "
+        "Supported: PDF, DOCX, PPTX, TXT, MD."
+    )
 
 
 # -----------------------------
@@ -489,7 +516,7 @@ with st.sidebar:
 # -----------------------------
 uploaded_files = st.file_uploader(
     "Upload documents",
-    type=["pdf", "docx", "txt", "md"],
+    type=["pdf", "docx", "pptx", "txt", "md"],
     accept_multiple_files=True,
 )
 
@@ -512,15 +539,13 @@ if load_drive:
                 if not drive_documents:
                     st.warning(
                         "No supported files were found. Make sure the Drive link is "
-                        "public/shared and contains PDF, DOCX, TXT, or MD files."
+                        "public/shared and contains PDF, DOCX, PPTX, TXT, or MD files."
                     )
                 else:
-                    # Store Drive documents separately so they remain available
-                    # after the button reruns the Streamlit script.
                     st.session_state.drive_documents = drive_documents
                     st.success(f"Loaded {len(drive_documents)} supported file(s) from Drive.")
             except Exception as error:
-               st.error(f"Could not load the Drive link: {error}")
+                st.error(f"Could not load the Drive link: {error}")
 
     st.info(
         "If this is a Google Drive file, check: "
@@ -591,7 +616,7 @@ if st.session_state.chunks:
             )
 
             if pages:
-                page_info = f"PDF pages represented: {pages[0]}–{pages[-1]}"
+                page_info = f"Pages/Slides represented: {pages[0]}–{pages[-1]}"
             else:
                 page_info = "Page number: not available"
 
@@ -689,7 +714,7 @@ if ask:
                         )
 
                         with st.expander(
-                            f"{number}. {result['filename']} — Page: {page}"
+                            f"{number}. {result['filename']} — Page/Slide: {page}"
                         ):
                             st.caption(
                                 f"Hybrid relevance score: {result['score']:.3f}"
