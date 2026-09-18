@@ -331,31 +331,25 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 
 def extract_drive_id(url):
-    """Extract Google Drive file or folder ID from common Drive links."""
-
+    """Extract Google Drive file, folder, doc, or presentation ID."""
     url = url.strip()
 
     patterns = [
-        # https://drive.google.com/file/d/FILE_ID/view
-        r"/file/d/([a-zA-Z0-9_-]+)",
-
-        # https://drive.google.com/drive/u/0/folders/FOLDER_ID
+        # Google Docs / Slides / Sheets links
+        r"/(?:file|presentation|document|spreadsheets)/d/([a-zA-Z0-9_-]+)",
+        # Folder links
         r"/folders/([a-zA-Z0-9_-]+)",
-
-        # https://drive.google.com/open?id=FILE_ID
+        # Open / UC links
         r"[?&]id=([a-zA-Z0-9_-]+)",
-
-        # https://drive.google.com/uc?id=FILE_ID
         r"uc\?id=([a-zA-Z0-9_-]+)",
     ]
 
     for pattern in patterns:
         match = re.search(pattern, url)
-
         if match:
             return match.group(1)
 
-    # If the user pasted only the file/folder ID
+    # If the user pasted only the ID string
     if re.fullmatch(r"[a-zA-Z0-9_-]{10,}", url):
         return url
 
