@@ -356,14 +356,11 @@ def extract_drive_id(url):
     return None
 
 
-def load_from_google_drive(url):
-    """
-    Load supported files from a public/shared Google Drive
-    file or folder.
+import shutil  # Add this import at the top of your script
 
-    Supported:
-    PDF, DOCX, TXT, MD
-    """
+
+def load_from_google_drive(url):
+    """Load supported files from a public/shared Google Drive file or folder."""
 
     temp_dir = Path(tempfile.mkdtemp(prefix="drive_docs_"))
     documents = []
@@ -374,13 +371,10 @@ def load_from_google_drive(url):
     # Google Drive Folder
     # -----------------------------
     if "/folders/" in url:
-
         folder_id = extract_drive_id(url)
 
         if not folder_id:
-            raise ValueError(
-                "Could not find the Google Drive folder ID."
-            )
+            raise ValueError("Could not find the Google Drive folder ID.")
 
         downloaded_dir = gdown.download_folder(
             id=folder_id,
@@ -400,15 +394,13 @@ def load_from_google_drive(url):
         files = [
             p
             for p in root.rglob("*")
-            if p.is_file()
-            and p.suffix.lower() in SUPPORTED_EXTENSIONS
+            if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
         ]
 
     # -----------------------------
     # Google Drive File
     # -----------------------------
     else:
-
         file_id = extract_drive_id(url)
 
         if not file_id:
@@ -417,10 +409,11 @@ def load_from_google_drive(url):
                 "Please paste a normal Google Drive file link."
             )
 
-        # Let gdown detect the original filename and extension.
+        # Download directly into temp_dir
+        output_target = str(temp_dir / "")
         downloaded = gdown.download(
             id=file_id,
-            output=None,
+            output=output_target,
             quiet=False,
         )
 
@@ -433,10 +426,10 @@ def load_from_google_drive(url):
 
         downloaded_path = Path(downloaded)
 
-        # Move the downloaded file into our temporary directory.
+        # Handle cross-device moves safely if needed
         final_path = temp_dir / downloaded_path.name
-
-        downloaded_path.replace(final_path)
+        if downloaded_path.resolve() != final_path.resolve():
+            shutil.move(str(downloaded_path), str(final_path))
 
         files = [final_path]
 
@@ -444,7 +437,6 @@ def load_from_google_drive(url):
     # Read supported files
     # -----------------------------
     for path in files:
-
         extension = path.suffix.lower()
 
         if extension not in SUPPORTED_EXTENSIONS:
@@ -452,14 +444,7 @@ def load_from_google_drive(url):
 
         try:
             file_bytes = path.read_bytes()
-
-            documents.append(
-                (
-                    path.name,
-                    file_bytes
-                )
-            )
-
+            documents.append((path.name, file_bytes))
         except OSError:
             continue
 
